@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "739057199710",
+    "project_id": "crane-app-8804e",
+    "storage_bucket": "crane-app-8804e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:739057199710:android:b6c84e63a8965f49d662cf",
+        "android_client_info": {
+          "package_name": "com.example.crane"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDktDmu5kI7zu0rmfAoXmP0jrw4H7EctGY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
