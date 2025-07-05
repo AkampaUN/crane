@@ -43,3 +43,16 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+#Ignore directories
+node_modules/
+__pycache__/
+.vscode
+
+#Ignore files
+.env
+*.log
+.DS_Store
+
+#Ignore all files in a directory (but keep the directory)
+temp/*
