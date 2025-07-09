@@ -1,3 +1,4 @@
+import 'package:crane/services/database_service.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:crane/models/task.dart';
@@ -5,6 +6,10 @@ import 'dart:convert';
 
 class TaskProvider with ChangeNotifier {
   List<Task> _tasks = [];
+  final DatabaseService _databaseService;
+
+  TaskProvider({required DatabaseService databaseService}) 
+      : _databaseService = databaseService;
 
   List<Task> get tasks => List.unmodifiable(_tasks);
   List<Task> get pendingTasks => _tasks.where((t) => !t.isCompleted).toList();
@@ -36,6 +41,7 @@ class TaskProvider with ChangeNotifier {
     } catch (e) {
       debugPrint('Error loading tasks: $e');
       _tasks = [];
+      notifyListeners();
     }
   }
 
@@ -70,6 +76,38 @@ class TaskProvider with ChangeNotifier {
     _tasks[index] = updatedTask;
     notifyListeners();
     await _persistTasks();
+  }
+
+  Future<void> syncTasks(String userId) async {
+    try {
+      // First try to get from Firestore
+      final firestoreTasks = await _databaseService.getTasks(userId);
+
+      if (firestoreTasks.isNotEmpty) {
+        _tasks = firestoreTasks;
+        await _saveToLocal();
+      } else {
+        // Fallback to local storage
+        await _loadFromLocal();
+      }
+
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error syncing tasks: $e');
+      await _loadFromLocal();
+    }
+  }
+
+  Future<void> _saveToLocal() async {
+    final prefs = await SharedPreferences.getInstance();
+    final tasksJson = _tasks.map((t) => jsonEncode(t.toJson())).toList();
+    await prefs.setStringList('tasks', tasksJson);
+  }
+
+  Future<void> _loadFromLocal() async {
+    final prefs = await SharedPreferences.getInstance();
+    final tasksJson = prefs.getStringList('tasks') ?? [];
+    _tasks = tasksJson.map((json) => Task.fromJson(jsonDecode(json))).toList();
   }
 
   // Toggle completion status

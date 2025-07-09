@@ -1,17 +1,19 @@
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-enum TaskStatus {
-  pending,
-  completed,
-}
+enum TaskStatus { pending, completed }
+
+enum TaskPriority { low, medium, high, critical }
 
 class Task {
   final String id;
   final String title;
   final String? description;
   final DateTime? dueDate;
-  TaskStatus status; // Changed from isCompleted to status enum
+  final String assigneeId;
+  final String assignerId;
+  TaskStatus status;
   final DateTime createdAt;
   final TaskPriority? priority;
   final List<String> tags;
@@ -21,17 +23,95 @@ class Task {
     required this.title,
     this.description,
     this.dueDate,
-    this.status = TaskStatus.pending, // Default to pending
-    required this.createdAt,
+    this.status = TaskStatus.pending,
+    DateTime? createdAt,
+    required this.assigneeId,
+    required this.assignerId,
     this.priority,
     this.tags = const [],
-  });
+  }) : createdAt = createdAt ?? DateTime.now();
 
-  // Helper getters (maintained for backward compatibility)
+  // Factory constructor for Firestore documents
+  factory Task.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return Task(
+      id: doc.id,
+      title: data['title'],
+      description: data['description'],
+      dueDate: data['dueDate']?.toDate(),
+      assigneeId: data['assigneeId'],
+      assignerId: data['assignerId'],
+      createdAt: data['createdAt']?.toDate(),
+      status: TaskStatus.values.firstWhere(
+        (e) => e.toString().split('.').last == data['status'],
+        orElse: () => TaskStatus.pending,
+      ),
+      priority: data['priority'] != null
+          ? TaskPriority.values.firstWhere(
+              (e) => e.toString().split('.').last == data['priority'],
+            )
+          : null,
+      tags: List<String>.from(data['tags'] ?? []),
+    );
+  }
+
+  // Convert to Firestore format
+  Map<String, dynamic> toFirestore() {
+    return {
+      'title': title,
+      'description': description,
+      'dueDate': dueDate,
+      'assigneeId': assigneeId,
+      'assignerId': assignerId,
+      'createdAt': createdAt,
+      'status': status.toString().split('.').last,
+      'priority': priority?.toString().split('.').last,
+      'tags': tags,
+    };
+  }
+
+  // Convert to JSON for local storage
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'description': description,
+      'dueDate': dueDate?.toIso8601String(),
+      'assigneeId': assigneeId,
+      'assignerId': assignerId,
+      'status': status.name,
+      'createdAt': createdAt.toIso8601String(),
+      'priority': priority?.name,
+      'tags': tags,
+    };
+  }
+
+  // Factory constructor from JSON
+  factory Task.fromJson(Map<String, dynamic> json) {
+    return Task(
+      id: json['id'],
+      title: json['title'],
+      description: json['description'],
+      dueDate: json['dueDate'] != null ? DateTime.parse(json['dueDate']) : null,
+      assigneeId: json['assigneeId'],
+      assignerId: json['assignerId'],
+      status: TaskStatus.values.firstWhere(
+        (e) => e.name == json['status'],
+        orElse: () => TaskStatus.pending,
+      ),
+      createdAt: DateTime.parse(json['createdAt']),
+      priority: json['priority'] != null
+          ? TaskPriority.values.byName(json['priority'])
+          : null,
+      tags: List<String>.from(json['tags'] ?? []),
+    );
+  }
+
+  // Helper getters
   bool get isCompleted => status == TaskStatus.completed;
   bool get isPending => status == TaskStatus.pending;
   bool get isOverdue =>
-      dueDate != null && isPending && dueDate!.isBefore(DateTime.now());
+      !isCompleted && dueDate != null && dueDate!.isBefore(DateTime.now());
   bool get hasDueDate => dueDate != null;
 
   String get formattedDueDate => hasDueDate
@@ -42,38 +122,6 @@ class Task {
 
   String get priorityLabel => priority?.name.toUpperCase() ?? 'NONE';
 
-  // Convert to/from Map for storage
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'title': title,
-      'description': description,
-      'dueDate': dueDate?.toIso8601String(),
-      'status': status.name, // Store enum as string
-      'createdAt': createdAt.toIso8601String(),
-      'priority': priority?.name,
-      'tags': tags,
-    };
-  }
-
-  factory Task.fromJson(Map<String, dynamic> map) {
-    return Task(
-      id: map['id'],
-      title: map['title'],
-      description: map['description'],
-      dueDate: map['dueDate'] != null ? DateTime.parse(map['dueDate']) : null,
-      status: TaskStatus.values.firstWhere(
-        (e) => e.name == map['status'],
-        orElse: () => TaskStatus.pending, // Default if not found
-      ),
-      createdAt: DateTime.parse(map['createdAt']),
-      priority: map['priority'] != null
-          ? TaskPriority.values.byName(map['priority'])
-          : null,
-      tags: List<String>.from(map['tags'] ?? []),
-    );
-  }
-
   // Copy with method for updates
   Task copyWith({
     String? id,
@@ -82,6 +130,8 @@ class Task {
     DateTime? dueDate,
     TaskStatus? status,
     DateTime? createdAt,
+    String? assigneeId,
+    String? assignerId,
     TaskPriority? priority,
     List<String>? tags,
   }) {
@@ -92,12 +142,13 @@ class Task {
       dueDate: dueDate ?? this.dueDate,
       status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,
+      assigneeId: assigneeId ?? this.assigneeId,
+      assignerId: assignerId ?? this.assignerId,
       priority: priority ?? this.priority,
       tags: tags ?? this.tags,
     );
   }
 
-  // Override equality comparison
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -107,30 +158,33 @@ class Task {
   int get hashCode => id.hashCode;
 }
 
-enum TaskPriority {
-  low,
-  medium,
-  high,
-  critical;
-
+// TaskPriority extension for additional functionality
+extension TaskPriorityExtension on TaskPriority {
   String get uppercaseName => name.toUpperCase();
-  String get name => toString().split('.').last;
 
   String get displayName {
     switch (this) {
-      case TaskPriority.low: return 'Low Priority';
-      case TaskPriority.medium: return 'Medium Priority';
-      case TaskPriority.high: return 'High Priority';
-      case TaskPriority.critical: return 'Critical Priority';
+      case TaskPriority.low:
+        return 'Low Priority';
+      case TaskPriority.medium:
+        return 'Medium Priority';
+      case TaskPriority.high:
+        return 'High Priority';
+      case TaskPriority.critical:
+        return 'Critical Priority';
     }
   }
 
   Color get color {
     switch (this) {
-      case TaskPriority.low: return Colors.green;
-      case TaskPriority.medium: return Colors.orange;
-      case TaskPriority.high: return Colors.red;
-      case TaskPriority.critical: return Colors.purple;
+      case TaskPriority.low:
+        return Colors.green;
+      case TaskPriority.medium:
+        return Colors.orange;
+      case TaskPriority.high:
+        return Colors.red;
+      case TaskPriority.critical:
+        return Colors.purple;
     }
   }
 }

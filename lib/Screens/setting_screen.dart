@@ -294,13 +294,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     // Open app store
                   },
                 ),
-                ListTile(
-                  leading: const Icon(Icons.logout),
-                  title: const Text('Sign Out'),
-                  onTap: () {
-                    // Implement sign out
-                  },
-                ),
               ],
             ),
           ),

@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_sign_in/google_sign_in.dart';
-import 'package:universal_platform/universal_platform.dart';
 import 'package:crane/services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -16,6 +14,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
   late final AuthService _auth;
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -24,48 +23,59 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> login() async {
+    if (!_formKey.currentState!.validate()) return;
+    
+    setState(() => _isLoading = true);
+    
     try {
-        await _auth.signInWithEmail(
+      final user = await _auth.signInWithEmail(
         emailController.text.trim(),
         passwordController.text.trim(),
       );
+      
       if (!mounted) return;
-      Navigator.pushReplacementNamed(context, '/home');
+      
+      if (user != null) {
+        Navigator.pushReplacementNamed(context, '/home');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Login failed')),
+        );
+      }
     } on FirebaseAuthException catch (e) {
-      ScaffoldMessenger.of(
-        context
-      ).showSnackBar(SnackBar(content: Text('Login failed: ${e.message}')),
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Login failed: ${e.message}')),
       );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   Future<void> signInWithGoogle() async {
+    setState(() => _isLoading = true);
+    
     try {
-      final GoogleSignIn googleSignIn = GoogleSignIn(
-        // Only needed for web/desktop
-        clientId: UniversalPlatform.isWeb || UniversalPlatform.isDesktop
-            ? 'YOUR_WEB_CLIENT_ID.apps.googleusercontent.com'
-            : null,
-        scopes: ['email'],
-      );
-
-      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
-      if (googleUser == null) return; // User canceled sign-in
-
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
-      final OAuthCredential credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      await FirebaseAuth.instance.signInWithCredential(credential);
+      final user = await _auth.signInWithGoogle();
+      
       if (!mounted) return;
-      Navigator.pushReplacementNamed(context, '/home');
+      
+      if (user != null) {
+        Navigator.pushReplacementNamed(context, '/home');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Google sign-in failed')),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Google sign-in failed: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Google sign-in failed: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -127,33 +137,33 @@ class _LoginScreenState extends State<LoginScreen> {
                             : 'Min 6 characters',
                       ),
                       const SizedBox(height: 24),
-                      ElevatedButton(
-                        onPressed: () {
-                          if (_formKey.currentState!.validate()) {
-                            login();
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue.shade700,
-                        ),
-                        child: const Text('Login'),
-                      ),
+                      _isLoading
+                          ? const CircularProgressIndicator()
+                          : ElevatedButton(
+                              onPressed: login,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue.shade700,
+                              ),
+                              child: const Text('Login'),
+                            ),
                       const SizedBox(height: 16),
-                      OutlinedButton.icon(
-                        onPressed: signInWithGoogle,
-                        icon: Image.asset(
-                          'assets/images/google_logo.jpeg',
-                          height: 20,
-                        ),
-                        label: const Text('Continue with Google'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          side: const BorderSide(color: Colors.white),
-                        ),
-                      ),
+                      _isLoading
+                          ? const SizedBox()
+                          : OutlinedButton.icon(
+                              onPressed: signInWithGoogle,
+                              icon: Image.asset(
+                                'assets/images/google_logo.jpeg',
+                                height: 20,
+                              ),
+                              label: const Text('Continue with Google'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.white,
+                                side: const BorderSide(color: Colors.white),
+                              ),
+                            ),
                       TextButton(
-                        onPressed: () =>
-                            Navigator.pushReplacementNamed(context, '/signup'),
+                        onPressed: () => Navigator.pushReplacementNamed(
+                            context, '/signup'),
                         child: const Text(
                           'Create Account',
                           style: TextStyle(color: Colors.white),
@@ -169,8 +179,14 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
-}
 
+  @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+}
 class BackgroundWrapper extends StatelessWidget {
   final String imagePath;
   final Widget child;
@@ -190,4 +206,4 @@ class BackgroundWrapper extends StatelessWidget {
       child: child,
     );
   }
-}
+} 

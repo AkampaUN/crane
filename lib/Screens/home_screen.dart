@@ -20,26 +20,47 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   String selectedTaskType = 'Pending';
   late DatabaseService _db = DatabaseService();
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _db = DatabaseService();
-    _loadTasks();
+    _initializeTasks();
   }
 
-  Future<void> _loadTasks() async {
-    final taskProvider = Provider.of<TaskProvider>(context, listen: false);
-    final prefs = await SharedPreferences.getInstance();
-    await taskProvider.loadTasks(prefs);
-
+   Future<void> _initializeTasks() async {
+    setState(() => _isLoading = true);
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      final firestoreTasks = await _db.getTasks(user.uid);
-      if (firestoreTasks.isEmpty) {
-        taskProvider.replaceAllTasks(firestoreTasks);
-        // Update last sync time
-        await prefs.setString('last_firestore_sync', DateTime.now().toString());
+      await Provider.of<TaskProvider>(context, listen: false).syncTasks(user.uid);
+    }
+    setState(() => _isLoading = false);
+  }
+
+  Future<void> _localTasks() async {
+    try {
+      final taskProvider = Provider.of<TaskProvider>(context, listen: false);
+      final prefs = await SharedPreferences.getInstance();
+      await taskProvider.loadTasks(prefs);
+
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final firestoreTasks = await _db.getTasks(user.uid);
+        if (firestoreTasks.isNotEmpty) {
+          taskProvider.replaceAllTasks(firestoreTasks);
+          // Update last sync time
+          await prefs.setString(
+            'last_firestore_sync',
+            DateTime.now().toString(),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading tasks: ${e.toString()}')),
+        );
       }
     }
   }
@@ -244,7 +265,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: RefreshIndicator(
-                    onRefresh: _loadTasks,
+                    onRefresh: _initializeTasks,
                     child: SingleChildScrollView(
                       physics: const AlwaysScrollableScrollPhysics(),
                       child: Column(
@@ -314,13 +335,27 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: 8),
         tasks.isEmpty
             ? _buildEmptyState(emptyMessage)
-            : ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: tasks.length,
-                itemBuilder: (context, index) => _buildTaskItem(tasks[index]),
+            : Column(
+                children: [
+                  ...tasks.map((task) => _buildTaskItem(task)).toList(),
+                  if (tasks.length >= 3) // Show "View All" if more than 2 tasks
+                    TextButton(
+                      onPressed: () =>
+                          _navigateToTaskList(context, isCompleted ? 1 : 0),
+                      child: Text('View All ${tasks.length} Tasks'),
+                    ),
+                ],
               ),
       ],
+    );
+  }
+
+  void _navigateToTaskList(BuildContext context, int initialTab) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TaskListScreen(initialTab: initialTab),
+      ),
     );
   }
 

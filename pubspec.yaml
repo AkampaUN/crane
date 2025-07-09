@@ -47,6 +47,7 @@ dependencies:
   awesome_notifications: ^0.10.1
   image_picker: ^1.1.2
   cloud_firestore: ^4.8.0
+  logging: ^1.1.1
 
 dev_dependencies:
   flutter_test:

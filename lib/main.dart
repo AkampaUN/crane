@@ -9,10 +9,12 @@ import 'firebase_options.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:awesome_notifications/awesome_notifications.dart';
-//import 'package:firebase_core/firebase_core.dart';
+import 'package:crane/services/auth_service.dart';
+import 'package:crane/services/database_service.dart'; // Add this import
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  AuthService.initializeLogging();
 
   // Initialize Firebase
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
@@ -31,16 +33,28 @@ void main() async {
     );
   };
 
+  // Create services
+  final databaseService = DatabaseService();
+  final taskProvider = TaskProvider(databaseService: databaseService);
+
   runApp(
     MultiProvider(
-      providers: [ChangeNotifierProvider(create: (context) => TaskProvider())],
+      providers: [
+        ChangeNotifierProvider(create: (context) => taskProvider), // Use the created instance
+      ],
       child: const MyApp(),
     ),
   );
 }
 
 Future<void> _initializeNotifications() async {
-  await AwesomeNotifications().initialize(
+  await AwesomeNotifications().isNotificationAllowed().then((isAllowed) {
+    if (!isAllowed) {
+      AwesomeNotifications().requestPermissionToSendNotifications();
+    }
+  });
+  
+  AwesomeNotifications().initialize(
     null, // Use default app icon
     [
       NotificationChannel(
@@ -109,8 +123,7 @@ class MyApp extends StatelessWidget {
       },
       onUnknownRoute: (settings) => MaterialPageRoute(
         builder: (_) =>
-            const Scaffold(body: Center(child: Text('Page not found!'))),
-      ),
+            const Scaffold(body: Center(child: Text('Page not found!'))),)
     );
   }
 }
